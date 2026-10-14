@@ -1,0 +1,24 @@
+{
+  "expo": {
+    "name": "MySchedule",
+    "slug": "myschedule",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "ios": {
+      "bundleIdentifier": "com.schedule.notifyme",
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.schedule.notifyme"
+    },
+    "plugins": [
+      "expo-notifications"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "9b6e0ac5-74c9-4c8b-8747-cdcc7a06cc87"
+      }
+    }
+  }
+}
