@@ -14,30 +14,45 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
 
-      - name: Install dependencies
+      - name: Install root dependencies
         run: npm install
 
       - name: Generate native iOS project
-        run: npx expo prebuild --platform ios
+        run: npx expo prebuild --platform ios --clean
 
-      - name: Build (no code signing)
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install
+
+      - name: Build unsigned app
         working-directory: ios
         run: |
-          WS=$(ls -d *.xcworkspace | head -1)
-          SCHEME="${WS%.xcworkspace}"
-          xcodebuild -workspace "$WS" -scheme "$SCHEME" \
-            -configuration Release -sdk iphoneos \
+          SCHEME=$(xcodebuild -workspace *.xcworkspace -list -json | python3 -c "import sys, json; data=json.load(sys.stdin); print(data['workspace']['schemes'][0])")
+          echo "Building scheme: $SCHEME"
+          xcodebuild clean build \
+            -workspace *.xcworkspace \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
             -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            build
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER=""
 
       - name: Package IPA
         run: |
-          APP=$(find ios/build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          APP_PATH=$(find ios/build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Error: .app bundle not found!"
+            exit 1
+          fi
           mkdir Payload
-          cp -R "$APP" Payload/
-          zip -r NotifyMe.ipa Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r -q NotifyMe.ipa Payload
 
       - uses: actions/upload-artifact@v4
         with:
