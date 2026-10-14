@@ -1,344 +1,480 @@
 import React, { useState, useEffect } from 'react';
 import {
-  SafeAreaView,
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  Modal,
-  TextInput,
   StyleSheet,
+  Text,
+  View,
+  TextInput,
+  TouchableOpacity,
+  FlatList,
+  SafeAreaView,
   StatusBar,
+  ScrollView,
+  Switch,
+  Image,
   Alert,
   Platform,
 } from 'react-native';
 import * as Notifications from 'expo-notifications';
+import { WebView } from 'react-native-webview';
 
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
-    shouldShowBanner: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
   }),
 });
 
-const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
-
-const CATEGORY_COLORS = {
-  Work: '#2563EB',
-  University: '#7C3AED',
-  Coding: '#059669',
-  English: '#D97706',
-  Assignment: '#DC2626',
-  'Meal / Travel': '#4B5563',
-  Rest: '#10B981',
-  Sleep: '#6B7280',
-};
-
-// Initial base routine extracted from My_Schedule.xlsx
-const INITIAL_SLOTS = [
-  { id: '1', time: '06:00 - 07:00', title: 'Wake up & breakfast', category: 'Meal / Travel', days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] },
-  { id: '2', time: '07:00 - 08:00', title: 'Travel to work', category: 'Meal / Travel', days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] },
-  { id: '3', time: '08:00 - 12:00', title: 'Work session', category: 'Work', days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] },
-  { id: '4', time: '12:00 - 13:00', title: 'Lunch break', category: 'Meal / Travel', days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] },
-  { id: '5', time: '13:00 - 17:00', title: 'Work afternoon', category: 'Work', days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] },
-  { id: '6', time: '17:00 - 17:45', title: 'Travel to University', category: 'Meal / Travel', days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] },
-  { id: '7', time: '17:45 - 20:45', title: 'University classes', category: 'University', days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] },
-  { id: '8', time: '21:00 - 21:30', title: 'English practice', category: 'English', days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'] },
-  { id: '9', time: '21:30 - 22:30', title: 'Coding & assignments', category: 'Coding', days: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] },
-  { id: '10', time: '08:00 - 11:00', title: 'Web dev project session', category: 'Coding', days: ['Saturday'] },
-  { id: '11', time: '13:00 - 16:00', title: 'University homework / assignments', category: 'Assignment', days: ['Saturday'] },
-  { id: '12', time: '09:00 - 11:00', title: 'Coding practice & review', category: 'Coding', days: ['Sunday'] },
-  { id: '13', time: '19:00 - 20:00', title: 'Assignment catch-up', category: 'Assignment', days: ['Sunday'] },
-];
-
 export default function App() {
-  const [selectedDay, setSelectedDay] = useState('Monday');
-  const [scheduleList, setScheduleList] = useState(INITIAL_SLOTS);
-  const [editingItem, setEditingItem] = useState(null);
-  const [modalVisible, setModalVisible] = useState(false);
+  const [currentTab, setCurrentTab] = useState('schedule'); // 'schedule' or 'coding'
 
-  // Form states inside modal
-  const [editTitle, setEditTitle] = useState('');
-  const [editTime, setEditTime] = useState('');
-  const [editCategory, setEditCategory] = useState('Work');
+  // Schedule State
+  const [tasks, setTasks] = useState([
+    { id: '1', title: 'Study Coding', time: '08:00 AM', alarm: true, note: 'HTML & CSS Review' },
+    { id: '2', title: 'Video Editing', time: '02:00 PM', alarm: false, note: 'Premiere Pro project' },
+  ]);
+  const [newTitle, setNewTitle] = useState('');
+  const [newTime, setNewTime] = useState('');
+  const [newNote, setNewNote] = useState('');
+
+  // Coding State
+  const [htmlCode, setHtmlCode] = useState(
+    `<div class="card">\n  <h1>Hello World</h1>\n  <p>Live HTML & CSS Editor</p>\n</div>`
+  );
+  const [cssCode, setCssCode] = useState(
+    `body { background: #0A0A0C; color: #fff; font-family: sans-serif; display: flex; justify-content: center; align-items: center; height: 90vh; }\n.card { background: #1A1A22; padding: 24px; border-radius: 12px; border: 1px solid #333; text-align: center; }\nh1 { color: #4E95FF; font-size: 22px; }`
+  );
 
   useEffect(() => {
     (async () => {
-      if (Platform.OS === 'android') {
-        await Notifications.setNotificationChannelAsync('default', {
-          name: 'Schedule Alerts',
-          importance: Notifications.AndroidImportance.HIGH,
-        });
-      }
       const { status } = await Notifications.requestPermissionsAsync();
       if (status !== 'granted') {
-        Alert.alert('Permission required', 'Please enable notifications in settings.');
+        Alert.alert('Permission required', 'Enable notifications to receive schedule alerts.');
       }
     })();
   }, []);
 
-  const openEditor = (item) => {
-    setEditingItem(item);
-    setEditTitle(item.title);
-    setEditTime(item.time);
-    setEditCategory(item.category);
-    setModalVisible(true);
-  };
-
-  const saveSlot = () => {
-    if (!editTitle.trim()) {
-      Alert.alert('Error', 'Please enter a title');
+  // Add Row
+  const handleAddTask = async () => {
+    if (!newTitle.trim()) {
+      Alert.alert('Missing Field', 'Please enter a title for this schedule.');
       return;
     }
-    setScheduleList((prev) =>
-      prev.map((item) =>
-        item.id === editingItem.id
-          ? { ...item, title: editTitle, time: editTime, category: editCategory }
-          : item
-      )
-    );
-    setModalVisible(false);
-  };
+    const newTask = {
+      id: Date.now().toString(),
+      title: newTitle.trim(),
+      time: newTime.trim() || 'Anytime',
+      alarm: true,
+      note: newNote.trim(),
+    };
 
-  const scheduleReminder = async (item) => {
-    const timeParts = item.time.split(' - ')[0].split(':');
-    const hour = parseInt(timeParts[0], 10) || 8;
-    const minute = parseInt(timeParts[1], 10) || 0;
+    setTasks([...tasks, newTask]);
 
+    // Schedule notification test alert
     await Notifications.scheduleNotificationAsync({
       content: {
-        title: `Upcoming: ${item.title}`,
-        body: `Category: ${item.category} (${item.time})`,
+        title: `Schedule Reminder: ${newTask.title}`,
+        body: newTask.note || `Time: ${newTask.time}`,
         sound: true,
       },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DAILY,
-        hour: hour,
-        minute: minute,
-      },
+      trigger: { seconds: 5 }, // triggers quick alert confirmation
     });
 
-    Alert.alert('Reminder Set!', `Daily reminder active for ${item.time}`);
+    setNewTitle('');
+    setNewTime('');
+    setNewNote('');
   };
 
-  const filteredSlots = scheduleList.filter((item) => item.days.includes(selectedDay));
+  // Delete Row
+  const handleDeleteTask = (id) => {
+    setTasks(tasks.filter((item) => item.id !== id));
+  };
+
+  // Toggle Alarm
+  const handleToggleAlarm = (id) => {
+    setTasks(
+      tasks.map((item) => (item.id === id ? { ...item, alarm: !item.alarm } : item))
+    );
+  };
+
+  // Combined HTML for WebView
+  const fullHtmlContent = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <style>${cssCode}</style>
+      </head>
+      <body>
+        ${htmlCode}
+      </body>
+    </html>
+  `;
 
   return (
     <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="light-content" />
+      <StatusBar barStyle="light-content" backgroundColor="#0A0A0C" />
 
-      {/* Header */}
-      <View style={styles.header}>
-        <Text style={styles.headerTitle}>My Weekly Schedule</Text>
-        <Text style={styles.headerSubtitle}>Tap slot to edit • Tap 🔔 to set reminder</Text>
+      {/* Navigation Header Tabs */}
+      <View style={styles.tabBar}>
+        <TouchableOpacity
+          style={[styles.tabButton, currentTab === 'schedule' && styles.tabButtonActive]}
+          onPress={() => setCurrentTab('schedule')}
+        >
+          <Text style={[styles.tabButtonText, currentTab === 'schedule' && styles.tabButtonTextActive]}>
+            📅 Schedule
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.tabButton, currentTab === 'coding' && styles.tabButtonActive]}
+          onPress={() => setCurrentTab('coding')}
+        >
+          <Text style={[styles.tabButtonText, currentTab === 'coding' && styles.tabButtonTextActive]}>
+            💻 Coding (HTML/CSS)
+          </Text>
+        </TouchableOpacity>
       </View>
 
-      {/* Day Selector */}
-      <View style={styles.daySelectorContainer}>
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={DAYS}
-          keyExtractor={(item) => item}
-          renderItem={({ item }) => {
-            const isActive = item === selectedDay;
-            return (
-              <TouchableOpacity
-                onPress={() => setSelectedDay(item)}
-                style={[styles.dayButton, isActive && styles.dayButtonActive]}
-              >
-                <Text style={[styles.dayText, isActive && styles.dayTextActive]}>
-                  {item.slice(0, 3)}
-                </Text>
-              </TouchableOpacity>
-            );
-          }}
-        />
-      </View>
+      {/* SCHEDULE VIEW */}
+      {currentTab === 'schedule' && (
+        <ScrollView style={styles.scrollArea} keyboardShouldPersistTaps="handled">
+          {/* Cover / Hero Image */}
+          <View style={styles.coverWrapper}>
+            <Image
+              source={{
+                uri: 'https://images.unsplash.com/photo-1518770660439-4636190af475?q=80&w=1000&auto=format&fit=crop',
+              }}
+              style={styles.coverImage}
+            />
+            <View style={styles.coverOverlay}>
+              <Text style={styles.coverTitle}>Daily Workspace Tracker</Text>
+              <Text style={styles.coverSubtitle}>Organize tasks with audio notifications</Text>
+            </View>
+          </View>
 
-      {/* Task List */}
-      <FlatList
-        data={filteredSlots}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => {
-          const accentColor = CATEGORY_COLORS[item.category] || '#2563EB';
-          return (
-            <TouchableOpacity
-              activeOpacity={0.7}
-              onPress={() => openEditor(item)}
-              style={[styles.card, { borderLeftColor: accentColor }]}
-            >
-              <View style={styles.cardContent}>
-                <View style={styles.badgeRow}>
-                  <View style={[styles.badge, { backgroundColor: accentColor + '20' }]}>
-                    <Text style={[styles.badgeText, { color: accentColor }]}>{item.category}</Text>
-                  </View>
-                  <Text style={styles.timeText}>{item.time}</Text>
-                </View>
-                <Text style={styles.taskTitle}>{item.title}</Text>
-              </View>
-
-              <TouchableOpacity
-                style={styles.bellButton}
-                onPress={() => scheduleReminder(item)}
-              >
-                <Text style={styles.bellIcon}>🔔</Text>
-              </TouchableOpacity>
+          {/* Add New Row Box */}
+          <View style={styles.cardBox}>
+            <Text style={styles.cardHeader}>+ Add Schedule Row</Text>
+            <TextInput
+              style={styles.inputField}
+              placeholder="Task Title (e.g., Database review)"
+              placeholderTextColor="#777"
+              value={newTitle}
+              onChangeText={setNewTitle}
+            />
+            <View style={styles.twoColumnRow}>
+              <TextInput
+                style={[styles.inputField, { flex: 1, marginRight: 8 }]}
+                placeholder="Time (e.g., 04:30 PM)"
+                placeholderTextColor="#777"
+                value={newTime}
+                onChangeText={setNewTime}
+              />
+              <TextInput
+                style={[styles.inputField, { flex: 1 }]}
+                placeholder="Details / Note"
+                placeholderTextColor="#777"
+                value={newNote}
+                onChangeText={setNewNote}
+              />
+            </View>
+            <TouchableOpacity style={styles.actionBtn} onPress={handleAddTask}>
+              <Text style={styles.actionBtnText}>Add Row & Set Alert</Text>
             </TouchableOpacity>
-          );
-        }}
-        ListEmptyComponent={
-          <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No events scheduled for {selectedDay}.</Text>
           </View>
-        }
-      />
 
-      {/* Edit Modal */}
-      <Modal visible={modalVisible} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <Text style={styles.modalTitle}>Edit Schedule Item</Text>
-
-            <Text style={styles.inputLabel}>Activity Name</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={editTitle}
-              onChangeText={setEditTitle}
-              placeholder="e.g. Work Session"
-              placeholderTextColor="#9CA3AF"
-            />
-
-            <Text style={styles.inputLabel}>Time Range</Text>
-            <TextInput
-              style={styles.modalInput}
-              value={editTime}
-              onChangeText={setEditTime}
-              placeholder="e.g. 08:00 - 12:00"
-              placeholderTextColor="#9CA3AF"
-            />
-
-            <Text style={styles.inputLabel}>Category</Text>
-            <View style={styles.categoryPicker}>
-              {Object.keys(CATEGORY_COLORS).map((cat) => (
-                <TouchableOpacity
-                  key={cat}
-                  onPress={() => setEditCategory(cat)}
-                  style={[
-                    styles.categoryChip,
-                    editCategory === cat && { backgroundColor: CATEGORY_COLORS[cat] },
-                  ]}
-                >
-                  <Text
-                    style={[
-                      styles.categoryChipText,
-                      editCategory === cat && { color: '#FFF' },
-                    ]}
+          {/* Schedule List */}
+          <View style={styles.scheduleListWrapper}>
+            <Text style={styles.listSectionTitle}>Your Schedule Rows ({tasks.length})</Text>
+            {tasks.map((item) => (
+              <View key={item.id} style={styles.scheduleRow}>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.taskTitle}>{item.title}</Text>
+                  <Text style={styles.taskTime}>⏰ {item.time}</Text>
+                  {item.note ? <Text style={styles.taskNote}>{item.note}</Text> : null}
+                </View>
+                <View style={styles.rowControls}>
+                  <Text style={styles.alarmLabel}>{item.alarm ? '🔔 Sound' : '🔕 Mute'}</Text>
+                  <Switch
+                    value={item.alarm}
+                    onValueChange={() => handleToggleAlarm(item.id)}
+                    trackColor={{ false: '#333', true: '#4E95FF' }}
+                    thumbColor={item.alarm ? '#fff' : '#888'}
+                  />
+                  <TouchableOpacity
+                    style={styles.deleteBtn}
+                    onPress={() => handleDeleteTask(item.id)}
                   >
-                    {cat}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnCancel]}
-                onPress={() => setModalVisible(false)}
-              >
-                <Text style={styles.btnCancelText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.btn, styles.btnSave]}
-                onPress={saveSlot}
-              >
-                <Text style={styles.btnSaveText}>Save Changes</Text>
-              </TouchableOpacity>
-            </View>
+                    <Text style={styles.deleteBtnText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))}
           </View>
-        </View>
-      </Modal>
+        </ScrollView>
+      )}
+
+      {/* CODING (HTML/CSS) VIEW */}
+      {currentTab === 'coding' && (
+        <ScrollView style={styles.scrollArea} keyboardShouldPersistTaps="handled">
+          <View style={styles.codingHeader}>
+            <Text style={styles.codeTitle}>HTML & CSS Editor</Text>
+            <Text style={styles.codeSubtitle}>Write or edit code below to view real-time live preview</Text>
+          </View>
+
+          {/* HTML Editor */}
+          <View style={styles.editorBox}>
+            <Text style={styles.editorTag}>HTML</Text>
+            <TextInput
+              style={styles.codeTextInput}
+              multiline
+              autoCapitalize="none"
+              autoCorrect={false}
+              value={htmlCode}
+              onChangeText={setHtmlCode}
+            />
+          </View>
+
+          {/* CSS Editor */}
+          <View style={styles.editorBox}>
+            <Text style={styles.editorTag}>CSS</Text>
+            <TextInput
+              style={styles.codeTextInput}
+              multiline
+              autoCapitalize="none"
+              autoCorrect={false}
+              value={cssCode}
+              onChangeText={setCssCode}
+            />
+          </View>
+
+          {/* Live Preview */}
+          <Text style={styles.previewTitle}>Live Output Preview</Text>
+          <View style={styles.previewContainer}>
+            <WebView
+              originWhitelist={['*']}
+              source={{ html: fullHtmlContent }}
+              style={styles.webview}
+            />
+          </View>
+        </ScrollView>
+      )}
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0F172A' },
-  header: { paddingHorizontal: 20, paddingTop: 20, paddingBottom: 10 },
-  headerTitle: { fontSize: 26, fontWeight: '700', color: '#F8FAFC' },
-  headerSubtitle: { fontSize: 13, color: '#94A3B8', marginTop: 4 },
-
-  daySelectorContainer: { paddingVertical: 12, paddingLeft: 20 },
-  dayButton: {
-    paddingVertical: 8,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    backgroundColor: '#1E293B',
-    marginRight: 8,
+  container: {
+    flex: 1,
+    backgroundColor: '#0A0A0C',
   },
-  dayButtonActive: { backgroundColor: '#3B82F6' },
-  dayText: { color: '#94A3B8', fontWeight: '600', fontSize: 14 },
-  dayTextActive: { color: '#FFFFFF' },
-
-  listContent: { paddingHorizontal: 20, paddingBottom: 30 },
-  card: {
-    backgroundColor: '#1E293B',
-    borderRadius: 14,
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#121217',
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+  },
+  tabButton: {
+    flex: 1,
+    paddingVertical: 10,
+    alignItems: 'center',
+    borderRadius: 8,
+  },
+  tabButtonActive: {
+    backgroundColor: '#1F2430',
+  },
+  tabButtonText: {
+    color: '#888',
+    fontWeight: '600',
+    fontSize: 15,
+  },
+  tabButtonTextActive: {
+    color: '#4E95FF',
+  },
+  scrollArea: {
+    flex: 1,
     padding: 16,
+  },
+  coverWrapper: {
+    width: '100%',
+    height: 160,
+    borderRadius: 14,
+    overflow: 'hidden',
+    marginBottom: 16,
+    position: 'relative',
+  },
+  coverImage: {
+    width: '100%',
+    height: '100%',
+  },
+  coverOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    padding: 16,
+  },
+  coverTitle: {
+    color: '#FFFFFF',
+    fontSize: 22,
+    fontWeight: 'bold',
+  },
+  coverSubtitle: {
+    color: '#C0C0C8',
+    fontSize: 13,
+    marginTop: 4,
+  },
+  cardBox: {
+    backgroundColor: '#16161D',
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#262633',
+    marginBottom: 20,
+  },
+  cardHeader: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
     marginBottom: 12,
+  },
+  inputField: {
+    backgroundColor: '#0E0E12',
+    color: '#FFF',
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#2A2A38',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginBottom: 10,
+    fontSize: 14,
+  },
+  twoColumnRow: {
+    flexDirection: 'row',
+  },
+  actionBtn: {
+    backgroundColor: '#387BFF',
+    borderRadius: 8,
+    paddingVertical: 12,
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  actionBtnText: {
+    color: '#FFF',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  scheduleListWrapper: {
+    marginBottom: 40,
+  },
+  listSectionTitle: {
+    color: '#A0A0B0',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 10,
+  },
+  scheduleRow: {
+    backgroundColor: '#16161D',
+    borderRadius: 10,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: '#242432',
+    marginBottom: 10,
     flexDirection: 'row',
     alignItems: 'center',
-    borderLeftWidth: 5,
+    justifyContent: 'space-between',
   },
-  cardContent: { flex: 1 },
-  badgeRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  badge: { borderRadius: 6, paddingHorizontal: 8, paddingVertical: 2, marginRight: 8 },
-  badgeText: { fontSize: 12, fontWeight: '700' },
-  timeText: { color: '#94A3B8', fontSize: 12, fontWeight: '500' },
-  taskTitle: { color: '#F1F5F9', fontSize: 16, fontWeight: '600' },
-  bellButton: { padding: 8, backgroundColor: '#334155', borderRadius: 20, marginLeft: 10 },
-  bellIcon: { fontSize: 16 },
-
-  emptyContainer: { alignItems: 'center', marginTop: 50 },
-  emptyText: { color: '#64748B', fontSize: 15 },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
-    justifyContent: 'flex-end',
+  taskTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
   },
-  modalContainer: {
-    backgroundColor: '#1E293B',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
+  taskTime: {
+    color: '#4E95FF',
+    fontSize: 13,
+    marginTop: 4,
   },
-  modalTitle: { fontSize: 20, fontWeight: '700', color: '#F8FAFC', marginBottom: 16 },
-  inputLabel: { color: '#94A3B8', fontSize: 12, fontWeight: '600', marginBottom: 6 },
-  modalInput: {
-    backgroundColor: '#0F172A',
+  taskNote: {
+    color: '#999',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  rowControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginLeft: 10,
+  },
+  alarmLabel: {
+    color: '#888',
+    fontSize: 11,
+    marginRight: 4,
+  },
+  deleteBtn: {
+    backgroundColor: '#FF3B30',
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 12,
+  },
+  deleteBtnText: {
     color: '#FFF',
-    padding: 12,
+    fontWeight: 'bold',
+    fontSize: 14,
+  },
+  codingHeader: {
+    marginBottom: 16,
+  },
+  codeTitle: {
+    color: '#FFF',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  codeSubtitle: {
+    color: '#888',
+    fontSize: 13,
+    marginTop: 4,
+  },
+  editorBox: {
+    backgroundColor: '#13131A',
     borderRadius: 10,
-    marginBottom: 14,
-  },
-  categoryPicker: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginBottom: 20 },
-  categoryChip: {
-    backgroundColor: '#0F172A',
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#334155',
+    borderColor: '#262635',
+    marginBottom: 14,
+    padding: 12,
   },
-  categoryChipText: { color: '#94A3B8', fontSize: 12, fontWeight: '500' },
-  modalButtons: { flexDirection: 'row', gap: 12 },
-  btn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center' },
-  btnCancel: { backgroundColor: '#334155' },
-  btnCancelText: { color: '#F8FAFC', fontWeight: '600' },
-  btnSave: { backgroundColor: '#3B82F6' },
-  btnSaveText: { color: '#FFF', fontWeight: '700' },
+  editorTag: {
+    color: '#4E95FF',
+    fontWeight: 'bold',
+    fontSize: 13,
+    marginBottom: 6,
+  },
+  codeTextInput: {
+    color: '#70FF94',
+    fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+    fontSize: 13,
+    minHeight: 110,
+    textAlignVertical: 'top',
+  },
+  previewTitle: {
+    color: '#FFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 8,
+    marginTop: 10,
+  },
+  previewContainer: {
+    height: 260,
+    borderRadius: 10,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#333',
+    marginBottom: 40,
+  },
+  webview: {
+    flex: 1,
+    backgroundColor: '#0A0A0C',
+  },
 });
