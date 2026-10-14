@@ -19,53 +19,38 @@ jobs:
       - name: Install dependencies
         run: npm install
 
+      - name: Update CocoaPods
+        run: sudo gem install cocoapods
+
       - name: Generate native iOS project
         run: npx expo prebuild --platform ios --clean --no-install
 
       - name: Install CocoaPods
         working-directory: ios
-        run: |
-          pod install --repo-update || pod install
+        run: pod install --repo-update
 
       - name: Build unsigned iOS app
         working-directory: ios
         run: |
-          if ls *.xcworkspace 1> /dev/null 2>&1; then
-            WS=$(ls -d *.xcworkspace | head -1)
-            SCHEME="${WS%.xcworkspace}"
-            echo "Building with workspace: $WS and scheme: $SCHEME"
-            xcodebuild clean build \
-              -workspace "$WS" \
-              -scheme "$SCHEME" \
-              -configuration Release \
-              -sdk iphoneos \
-              -derivedDataPath build \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGN_IDENTITY="" \
-              DEVELOPMENT_TEAM=""
-          else
-            PROJ=$(ls -d *.xcodeproj | head -1)
-            SCHEME="${PROJ%.xcodeproj}"
-            echo "Building with project: $PROJ and scheme: $SCHEME"
-            xcodebuild clean build \
-              -project "$PROJ" \
-              -scheme "$SCHEME" \
-              -configuration Release \
-              -sdk iphoneos \
-              -derivedDataPath build \
-              CODE_SIGNING_ALLOWED=NO \
-              CODE_SIGNING_REQUIRED=NO \
-              CODE_SIGN_IDENTITY="" \
-              DEVELOPMENT_TEAM=""
-          fi
+          WS=$(ls -d *.xcworkspace | head -1)
+          SCHEME="${WS%.xcworkspace}"
+          echo "Building workspace: $WS with scheme: $SCHEME"
+          xcodebuild clean build \
+            -workspace "$WS" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
 
       - name: Package IPA
         run: |
           APP_PATH=$(find ios/build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
           if [ -z "$APP_PATH" ]; then
             echo "Error: .app file not found!"
-            find ios/build -name "*.app" || true
             exit 1
           fi
           mkdir Payload
