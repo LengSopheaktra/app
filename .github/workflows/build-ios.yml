@@ -1,0 +1,71 @@
+name: Build unsigned iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Generate native iOS project
+        run: npx expo prebuild --platform ios --clean --no-install
+
+      - name: Strip privacy_file_aggregation_enabled from Podfile
+        run: |
+          python3 -c "
+          with open('ios/Podfile', 'r') as f:
+              lines = f.readlines()
+          with open('ios/Podfile', 'w') as f:
+              for line in lines:
+                  if 'privacy_file_aggregation_enabled' not in line:
+                      f.write(line)
+          "
+
+      - name: Install CocoaPods
+        working-directory: ios
+        run: pod install
+
+      - name: Build unsigned iOS app
+        working-directory: ios
+        run: |
+          WS=$(ls -d *.xcworkspace | head -1)
+          SCHEME="${WS%.xcworkspace}"
+          echo "Building workspace: $WS with scheme: $SCHEME"
+          xcodebuild clean build \
+            -workspace "$WS" \
+            -scheme "$SCHEME" \
+            -configuration Release \
+            -sdk iphoneos \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
+
+      - name: Package IPA
+        run: |
+          APP_PATH=$(find ios/build/Build/Products/Release-iphoneos -maxdepth 1 -name "*.app" | head -1)
+          if [ -z "$APP_PATH" ]; then
+            echo "Error: .app file not found!"
+            exit 1
+          fi
+          mkdir Payload
+          cp -R "$APP_PATH" Payload/
+          zip -r -q NotifyMe.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NotifyMe-ipa
+          path: NotifyMe.ipa
